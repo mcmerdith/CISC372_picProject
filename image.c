@@ -78,12 +78,17 @@ uint8_t getPixelValue(Image *srcImage, int x, int y, int bit,
 //             to use for the convolution
 // Returns: Nothing
 void convolute(Image *srcImage, Image *destImage, Matrix algorithm) {
-  int row, pix, bit;
-  for (row = 0; row < srcImage->height; row++) {
-    for (pix = 0; pix < srcImage->width; pix++) {
-      for (bit = 0; bit < srcImage->bpp; bit++) {
-        destImage->data[Index(pix, row, srcImage->width, bit, srcImage->bpp)] =
-            getPixelValue(srcImage, pix, row, bit, algorithm);
+#pragma omp parallel
+  {
+    int row, pix, bit;
+    for (row = 0; row < srcImage->height; row++) {
+#pragma omp for
+      for (pix = 0; pix < srcImage->width; pix++) {
+        for (bit = 0; bit < srcImage->bpp; bit++) {
+          destImage
+              ->data[Index(pix, row, srcImage->width, bit, srcImage->bpp)] =
+              getPixelValue(srcImage, pix, row, bit, algorithm);
+        }
       }
     }
   }
@@ -146,6 +151,10 @@ int main(int argc, char **argv) {
   destImage.data = malloc(sizeof(uint8_t) * destImage.width * destImage.bpp *
                           destImage.height);
   convolute(&srcImage, &destImage, algorithms[type]);
+
+  t2 = time(NULL);
+  printf("Done computing in %ld seconds\n", t2 - t1);
+
   stbi_write_png("output.png", destImage.width, destImage.height, destImage.bpp,
                  destImage.data, destImage.bpp * destImage.width);
   stbi_image_free(srcImage.data);
