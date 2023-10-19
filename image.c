@@ -1,4 +1,5 @@
 #include "image.h"
+#include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -24,6 +25,27 @@ Matrix algorithms[] = {{{0, -1, 0}, {-1, 4, -1}, {0, -1, 0}},
                        {{-2, -1, 0}, {-1, 1, 1}, {0, 1, 2}},
                        {{0, 0, 0}, {0, 1, 0}, {0, 0, 0}}};
 
+// execute the algorithm
+void *algorithm_worker(void *data) {
+  ThreadData *t_data = (ThreadData *)data;
+  int x, y, bit;
+
+  for (x = 0; x < t_data->src->width; x++) {
+    for (y = StartIndex(t_data->t_rank, NTHREADS, t_data->src->height);
+         y < StartIndex(t_data->t_rank + 1, NTHREADS, t_data->src->height);
+         y++) {
+      for (bit = 0; bit < t_data->src->bpp; bit++) {
+        t_data->dest
+            ->data[Index(x, y, t_data->src->width, bit, t_data->src->bpp)] =
+            getPixelValue(t_data->src, x, y, bit,
+                          algorithms[t_data->algorithm]);
+      }
+    }
+  }
+
+  return NULL;
+}
+
 // getPixelValue - Computes the value of a specific pixel on a specific channel
 // using the selected convolution kernel Paramters: srcImage:  An Image struct
 // populated with the image being convoluted
@@ -34,8 +56,7 @@ Matrix algorithms[] = {{{0, -1, 0}, {-1, 4, -1}, {0, -1, 0}},
 // Returns: The new value for this x,y pixel and bit channel
 uint8_t getPixelValue(Image *srcImage, int x, int y, int bit,
                       Matrix algorithm) {
-  int px, mx, py, my, i, span;
-  span = srcImage->width * srcImage->bpp;
+  int px, mx, py, my;
   // for the edge pixes, just reuse the edge pixel
   px = x + 1;
   py = y + 1;
@@ -72,22 +93,33 @@ uint8_t getPixelValue(Image *srcImage, int x, int y, int bit,
 }
 
 // convolute:  Applies a kernel matrix to an image
-// Parameters: srcImage: The image being convoluted
+//
+// Parameters: 
+//
+//             srcImage: The image being convoluted
+//             
 //             destImage: A pointer to a  pre-allocated (including space for the
 //             pixel array) structure to receive the convoluted image.  It
-//             should be the same size as srcImage algorithm: The kernel matrix
+//             should be the same size as src
+//             
+//             Image algorithm: The kernel matrix
 //             to use for the convolution
+//
 // Returns: Nothing
-void convolute(Image *srcImage, Image *destImage, Matrix algorithm) {
-  int row, pix, bit, span;
-  span = srcImage->bpp * srcImage->bpp;
-  for (row = 0; row < srcImage->height; row++) {
-    for (pix = 0; pix < srcImage->width; pix++) {
-      for (bit = 0; bit < srcImage->bpp; bit++) {
-        destImage->data[Index(pix, row, srcImage->width, bit, srcImage->bpp)] =
-            getPixelValue(srcImage, pix, row, bit, algorithm);
-      }
-    }
+void convolute(Image *srcImage, Image *destImage, int algorithm) {
+  pthread_t threads[NTHREADS];
+  ThreadData data[NTHREADS];
+
+  for (int tid = 0; tid < NTHREADS; tid++) {
+    data[tid].src = srcImage;
+    data[tid].dest = destImage;
+    data[tid].algorithm = algorithm;
+    data[tid].t_rank = tid;
+    pthread_create(&threads[tid], NULL, &algorithm_worker, &data[tid]);
+  }
+
+  for (int tid = 0; tid < NTHREADS; tid++) {
+    pthread_join(threads[tid], NULL);
   }
 }
 
@@ -135,25 +167,33 @@ int main(int argc, char **argv) {
   }
   enum KernelTypes type = GetKernelType(argv[2]);
 
-  Image srcImage, destImage, bwImage;
+  Image srcImage, destImage;
   srcImage.data =
       stbi_load(fileName, &srcImage.width, &srcImage.height, &srcImage.bpp, 0);
   if (!srcImage.data) {
     printf("Error loading file %s.\n", fileName);
     return -1;
   }
+
   destImage.bpp = srcImage.bpp;
   destImage.height = srcImage.height;
   destImage.width = srcImage.width;
   destImage.data = malloc(sizeof(uint8_t) * destImage.width * destImage.bpp *
                           destImage.height);
-  convolute(&srcImage, &destImage, algorithms[type]);
+
+  convolute(&srcImage, &destImage, type);
+
+  t2 = time(NULL);
+  printf("Done computing in %ld seconds\n", t2 - t1);
+
   stbi_write_png("output.png", destImage.width, destImage.height, destImage.bpp,
                  destImage.data, destImage.bpp * destImage.width);
   stbi_image_free(srcImage.data);
 
   free(destImage.data);
+
   t2 = time(NULL);
-  printf("Took %ld seconds\n", t2 - t1);
+  printf("Done in %ld seconds\n", t2 - t1);
+
   return 0;
 }
