@@ -34,8 +34,7 @@ Matrix algorithms[] = {{{0, -1, 0}, {-1, 4, -1}, {0, -1, 0}},
 // Returns: The new value for this x,y pixel and bit channel
 uint8_t getPixelValue(Image *srcImage, int x, int y, int bit,
                       Matrix algorithm) {
-  int px, mx, py, my, i, span;
-  span = srcImage->width * srcImage->bpp;
+  int px, mx, py, my;
   // for the edge pixes, just reuse the edge pixel
   px = x + 1;
   py = y + 1;
@@ -79,8 +78,7 @@ uint8_t getPixelValue(Image *srcImage, int x, int y, int bit,
 //             to use for the convolution
 // Returns: Nothing
 void convolute(Image *srcImage, Image *destImage, Matrix algorithm) {
-  int row, pix, bit, span;
-  span = srcImage->bpp * srcImage->bpp;
+  int row, pix, bit;
   for (row = 0; row < srcImage->height; row++) {
     for (pix = 0; pix < srcImage->width; pix++) {
       for (bit = 0; bit < srcImage->bpp; bit++) {
@@ -135,7 +133,7 @@ int main(int argc, char **argv) {
   }
   enum KernelTypes type = GetKernelType(argv[2]);
 
-  Image srcImage, destImage, bwImage;
+  Image srcImage, destImage;
   srcImage.data =
       stbi_load(fileName, &srcImage.width, &srcImage.height, &srcImage.bpp, 0);
   if (!srcImage.data) {
